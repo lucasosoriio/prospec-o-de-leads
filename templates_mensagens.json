@@ -1,0 +1,14 @@
+{
+  "template_alta_prioridade": {
+    "assunto": "Alta Prioridade",
+    "mensagem": "Olá {nome}! Tudo bem?\n\nSou do time [Sua Empresa] e identificamos oportunidades para sua empresa no Google Meu Negócio.\n\nPodemos te mostrar 3 dicas rápidas para aumentar clientes.\n\nTem interesse em uma consultoria gratuita de 15 minutos?"
+  },
+  "template_media_prioridade": {
+    "assunto": "Média Prioridade",
+    "mensagem": "Olá {nome}!\n\nEstamos ajudando empresas como a sua a melhorarem sua presença digital.\n\nGostaria de receber algumas dicas práticas?"
+  },
+  "template_baixa_prioridade": {
+    "assunto": "Perfil Otimizado",
+    "mensagem": "Olá {nome}!\n\nParabéns pelo seu perfil no Google Meu Negócio!\n\nInteressado em descobrir pontos de melhoria?"
+  }
+}

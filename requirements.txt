@@ -1,0 +1,6 @@
+requests
+pandas
+openpyxl
+twilio
+python-dotenv
+phonenumbers
