@@ -1,14 +1,14 @@
 {
   "template_alta_prioridade": {
     "assunto": "Alta Prioridade",
-    "mensagem": "Olá {nome}! Tudo bem?\n\nSou do time [Sua Empresa] e identificamos oportunidades para sua empresa no Google Meu Negócio.\n\nPodemos te mostrar 3 dicas rápidas para aumentar clientes.\n\nTem interesse em uma consultoria gratuita de 15 minutos?"
+    "mensagem": "Olá {nome}, tudo bem?\n\nEncontrei o perfil da sua empresa no Google e percebi que ele está praticamente invisível: poucas informações, sem fotos recentes e difícil para o cliente confiar. Isso faz com que muita gente acabe escolhendo os concorrentes.\n\nEu trabalho com otimização do Google Meu Negócio justamente para resolver isso e atrair mais clientes pelo Maps.\n\nQuer que eu faça um diagnóstico gratuito e mostre onde você pode estar perdendo clientes hoje?"
   },
   "template_media_prioridade": {
     "assunto": "Média Prioridade",
-    "mensagem": "Olá {nome}!\n\nEstamos ajudando empresas como a sua a melhorarem sua presença digital.\n\nGostaria de receber algumas dicas práticas?"
+    "mensagem": "Olá {nome}, tudo bem?\n\nVi o perfil da sua empresa no Google e achei que já tem uma boa base, mas percebi que ainda não está totalmente otimizado. Isso significa que dá pra melhorar bastante o alcance e fazer sua empresa aparecer mais vezes nas buscas locais.\n\nEu ajudo empresas a ficarem no topo do Google Maps e aumentarem os contatos sem precisar de anúncios.\n\nQuer que eu te mostre rapidamente alguns pontos que poderiam ser ajustados?"
   },
   "template_baixa_prioridade": {
-    "assunto": "Perfil Otimizado",
-    "mensagem": "Olá {nome}!\n\nParabéns pelo seu perfil no Google Meu Negócio!\n\nInteressado em descobrir pontos de melhoria?"
+    "assunto": "Baixa Prioridade",
+    "mensagem": "Olá {nome}, tudo bem?\n\nDei uma olhada no perfil da sua empresa no Google e está muito bem cuidado 👏 Mas ainda existem alguns ajustes avançados que podem colocar sua empresa ainda mais em destaque e atrair clientes de forma contínua.\n\nEu trabalho justamente com essa parte estratégica de otimização.\n\nSe quiser, posso te enviar algumas sugestões personalizadas para potencializar ainda mais os resultados."
   }
 }

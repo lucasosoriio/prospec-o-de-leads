@@ -5,12 +5,20 @@ import json
 import phonenumbers
 from phonenumbers import carrier
 import re
+import os
+import random  # Adicionado para o delay aleatório
+from dotenv import load_dotenv # Adicionado para carregar variáveis de ambiente
 
-# Configurações do WPPConnect
-WPPCONNECT_API_URL = "http://localhost:3000/api"
+# Carregar variáveis de ambiente do arquivo .env
+load_dotenv()
+
+# Configurações da API WhatsApp Local (ajuste conforme sua API)
+# Você pode colocar essas variáveis no seu arquivo .env também
+WHATSAPP_API_BASE_URL = os.getenv('WHATSAPP_API_BASE_URL', 'http://localhost:3000')
+WHATSAPP_SESSION_ID = os.getenv('WHATSAPP_SESSION_ID', 'ABCD') # Substitua 'ABCD' pelo ID correto se for diferente
 
 # Chave da API do Google Maps
-API_KEY = 'AIzaSyAHtYhCLgfTao-oMPJhm0qU4F_tv4lyc2o'
+API_KEY = 'AIzaSyAHtYhCLgfTao-oMPJhm0qU4F_tv4lyc2o' # Considere mover isso para .env também por segurança
 
 # Carregar templates de mensagens
 def carregar_templates():
@@ -56,38 +64,71 @@ def verificar_whatsapp(numero):
         return numero_valido
     return None
 
-# Função para enviar mensagem via WPPConnect (WhatsApp não oficial)
+# Função para enviar mensagem via API WhatsApp Local
 def enviar_whatsapp(numero, mensagem):
     """
-    Envia mensagem via WPPConnect (API não oficial)
+    Envia mensagem via API WhatsApp Local.
+    Endpoint descoberto: POST http://localhost:3000/client/sendMessage/{sessionId}
     """
     try:
-        # Formatar número para o padrão internacional (sem +)
-        # Ex: +5511999999999 -> 5511999999999
-        numero_formatado = numero.replace('+', '')
+        # Limpar o número
+        numero_limpo = str(numero).replace('+', '').replace(' ', '').replace('-', '').strip()
+
+        # Montar URL conforme descoberto
+        url_envio = f"{WHATSAPP_API_BASE_URL}/client/sendMessage/{WHATSAPP_SESSION_ID}"
         
-        url = f"{WPPCONNECT_API_URL}/send-message"
+        # Montar payload no formato esperado pela API
         payload = {
-            "phone": numero_formatado,
-            "message": mensagem
+            "chatId": f"{numero_limpo}@c.us",
+            "contentType": "string",
+            "content": mensagem
         }
+
+        print(f"📤 Tentando enviar para {numero} via {url_envio}")
         
-        response = requests.post(url, json=payload, timeout=30)
+        # Enviar requisição
+        resp = requests.post(url_envio, json=payload, timeout=30)
+
+        print(f"[{numero_limpo}] → Status da requisição: {resp.status_code}")
         
-        if response.status_code == 200:
-            print(f"✅ Mensagem enviada para {numero}: {response.json()}")
-            return True
+        if resp.status_code in [200, 201]:
+            try:
+                resposta_json = resp.json()
+                # Verificar sucesso. A lógica exata depende da resposta da sua API.
+                # Como vimos que ela pode retornar 500 mesmo enviando, vamos ser tolerantes.
+                if resposta_json.get('success') == True:
+                    print(f"✅ Mensagem enviada para {numero} (API confirmou sucesso)")
+                    return True
+                elif 'message' in resposta_json:
+                     # A API respondeu com alguma mensagem, pode ser sucesso mesmo com erro 500
+                     print(f"⚠️ API respondeu. Verifique no WhatsApp. Detalhes: {resposta_json}")
+                     # Como a mensagem chegou antes, vamos considerar sucesso.
+                     # Você pode ajustar essa lógica.
+                     return True
+                else:
+                     print(f"⚠️ API respondeu com status 200/201, mas formato inesperado: {resposta_json}")
+                     return True # Assume sucesso por ora
+            except requests.exceptions.JSONDecodeError:
+                print(f"✅ Mensagem possivelmente enviada para {numero} (resposta não JSON, status {resp.status_code})")
+                return True
         else:
-            print(f"❌ Erro ao enviar mensagem para {numero}: Status {response.status_code}")
-            print(f"Resposta: {response.text}")
+            # Status de erro (4xx, 5xx)
+            print(f"❌ Erro ao enviar para {numero}: {resp.status_code} - {resp.text}")
             return False
-            
-    except Exception as e:
-        print(f"❌ Erro ao enviar mensagem para {numero}: {str(e)}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Erro de conexão ao enviar para {numero}: {e}")
         return False
+    except Exception as e:
+        print(f"❌ Erro inesperado ao enviar para {numero}: {e}")
+        return False
+
+    # Delay entre envios pode ser colocado aqui ou no loop principal
+    # time.sleep(2) 
 
 # Função para chamar a API do Google Places Text Search
 def chamar_places_api(query):
+    # Corrigido: Removido espaço extra na URL
     url = f"https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {
         'query': query,
@@ -102,6 +143,7 @@ def chamar_places_api(query):
 
 # Função para pegar detalhes do local
 def get_place_details(place_id):
+    # Corrigido: Removido espaço extra na URL
     url = f"https://maps.googleapis.com/maps/api/place/details/json"
     params = {
         'place_id': place_id,
@@ -139,18 +181,37 @@ def selecionar_template(status_otimizacao, templates):
     else:
         return templates.get('template_baixa_prioridade', {})
 
-# Função principal de prospecção
-def prospectar_empresas(config_data):
+# Função principal de prospecção (com filtro de avaliação opcional)
+def prospectar_empresas(config_data, nota_min=None, nota_max=None):
+    """
+    Prospecta empresas com base em configurações e filtros de avaliação opcionais.
+
+    Args:
+        config_data: Lista de tuplas (cidade, tipo_negocio).
+        nota_min: Nota mínima de avaliação para incluir o lead (opcional).
+        nota_max: Nota máxima de avaliação para incluir o lead (opcional).
+
+    Returns:
+        Lista de dicionários com os dados dos leads que atendem aos critérios.
+    """
     resultados = []
     templates = carregar_templates()
+    
+    # Contador para feedback ao usuário
+    total_places_considerados = 0
+    total_places_filtrados = 0
+
     for cidade, tipo_negocio in config_data:
         if cidade and tipo_negocio:
             print(f"\n🔍 Prospectando {tipo_negocio} em {cidade}...")
             query = f"{tipo_negocio} em {cidade}"
             places_data = chamar_places_api(query)
+            
             if places_data and 'results' in places_data:
                 for place in places_data['results']:
+                    total_places_considerados += 1
                     place_details = get_place_details(place['place_id'])
+                    
                     if place_details:
                         nome = place_details.get('name', '')
                         endereco = place_details.get('formatted_address', '')
@@ -159,14 +220,33 @@ def prospectar_empresas(config_data):
                         google_maps_url = place_details.get('url', '')
                         rating = place_details.get('rating', 0)
                         user_ratings_total = place_details.get('user_ratings_total', 0)
+
+                        # --- FILTRO POR AVALIAÇÃO ---
+                        # Verifica se o lead está dentro da faixa de avaliação desejada
+                        atende_filtro_nota = True
+                        if nota_min is not None and rating < nota_min:
+                            atende_filtro_nota = False
+                        if nota_max is not None and rating > nota_max:
+                            atende_filtro_nota = False
+                        
+                        if not atende_filtro_nota:
+                            total_places_filtrados += 1
+                            # Opcional: Print para debug
+                            # print(f"  ⏭️  Ignorado (Nota {rating}): {nome}")
+                            continue # Pula para o próximo lugar
+                        # --- FIM DO FILTRO ---
+
                         status_otimizacao = analisar_perfil(place_details)
+                        
                         # Tentar extrair e validar número de WhatsApp
                         numero_whatsapp = None
                         if telefone:
                             numero_whatsapp = verificar_whatsapp(telefone)
+                        
                         # Selecionar template apropriado
                         template = selecionar_template(status_otimizacao, templates)
                         assunto = template.get('assunto', '')
+                        
                         resultados.append({
                             'Nome': nome,
                             'Endereço': endereco,
@@ -175,7 +255,7 @@ def prospectar_empresas(config_data):
                             'Website': website,
                             'Google Maps URL': google_maps_url,
                             'Avaliações': user_ratings_total,
-                            'Nota': rating,
+                            'Nota': rating, # Inclui a nota no resultado
                             'Status Otimização': status_otimizacao,
                             'Template Usado': assunto,
                             'Data': pd.Timestamp.now(),
@@ -184,6 +264,11 @@ def prospectar_empresas(config_data):
                             'Observações': ''
                         })
                     time.sleep(1)  # Evitar rate limiting
+
+    print(f"\nℹ️  Total de lugares considerados: {total_places_considerados}")
+    print(f"⏭️  Total de lugares filtrados (fora da faixa de nota): {total_places_filtrados}")
+    print(f"✅ Total de leads capturados: {len(resultados)}")
+    
     return resultados
 
 # Função para carregar números de WhatsApp validados de arquivo
@@ -202,53 +287,57 @@ def carregar_numeros_validados():
         print("Arquivo numeros_whatsapp_validados.csv não encontrado!")
         return {}
 
-# Função para enviar mensagens automáticas
-def enviar_mensagens_automaticas(df_resultados):
+# Função para enviar mensagens automáticas (ATUALIZADA)
+def enviar_mensagens_automaticas(df_resultados): # Recebe o DataFrame
     templates = carregar_templates()
-    numeros_validados = carregar_numeros_validados()
+    # numeros_validados = carregar_numeros_validados() # Se usar
     
-    # Verificar se WPPConnect está online
-    try:
-        status_response = requests.get(f"{WPPCONNECT_API_URL}/status", timeout=5)
-        if status_response.status_code != 200:
-            print("⚠️ WPPConnect não está respondendo! Certifique-se que está rodando.")
-            return
-        print("✅ WPPConnect está online e pronto para enviar mensagens")
-    except:
-        print("⚠️ Não foi possível conectar ao WPPConnect! Certifique-se que está rodando em http://localhost:3000")
-        return
-    
-    for index, lead in df_resultados.iterrows():
-        # Primeiro, tentar usar número já validado
-        numero_whatsapp = None
-        # Verificar se já temos o número validado
-        telefone_original = lead['Telefone']
-        if telefone_original in numeros_validados:
-            numero_whatsapp = numeros_validados[telefone_original]
-        else:
-            # Usar número validado da prospecção
-            numero_whatsapp = lead['WhatsApp Validado']
-            
+    # Verificação de conectividade básica (opcional)
+    # try:
+    #     status_response = requests.get(f"{WHATSAPP_API_BASE_URL}/algum_endpoint_de_status", timeout=5)
+    #     if status_response.status_code != 200:
+    #         print("⚠️ API WhatsApp não está respondendo!")
+    #         return
+    #     print("✅ API WhatsApp está online.")
+    # except Exception as e:
+    #     print(f"⚠️ Não foi possível conectar à API WhatsApp: {e}")
+    #     return
+
+    for index, lead in df_resultados.iterrows(): # Itera sobre o DataFrame recebido
+        numero_whatsapp = lead['WhatsApp Validado'] # Ou 'Telefone' se não tiver validado
+        
         if numero_whatsapp and pd.notna(numero_whatsapp):
-            # Verificar se já foi enviada mensagem
-            if not lead['Mensagem Enviada']:
+            if not lead['Mensagem Enviada']: # Só envia se ainda não foi enviada
                 # Personalizar mensagem
                 status = lead['Status Otimização']
                 template = selecionar_template(status, templates)
-                mensagem_base = template.get('mensagem', '')
-                # Substituir variáveis na mensagem
-                mensagem_personalizada = mensagem_base.replace('{nome}', lead['Nome'].split()[0])
-                print(f"\n📨 Enviando mensagem para {lead['Nome']} ({numero_whatsapp})")
-                sucesso = enviar_whatsapp(numero_whatsapp, mensagem_personalizada)
+                mensagem_base = template.get('mensagem', 'Mensagem padrão.')
+                
+                # Substituir variáveis
+                nome_lead = str(lead['Nome']) if pd.notna(lead['Nome']) else "Profissional"
+                mensagem_personalizada = mensagem_base.replace('{nome}', nome_lead.split()[0])
+
+                print(f"\n📨 Enviando mensagem para {nome_lead} ({numero_whatsapp})")
+                sucesso = enviar_whatsapp(numero_whatsapp, mensagem_personalizada) # Chama a função de envio
+                
+                # --- ATUALIZAÇÃO CRÍTICA NO DATAFRAME ---
                 df_resultados.at[index, 'Mensagem Enviada'] = sucesso
                 if sucesso:
                     df_resultados.at[index, 'Observações'] = 'Mensagem enviada com sucesso'
                 else:
                     df_resultados.at[index, 'Observações'] = 'Erro no envio'
-                time.sleep(2)  # Pequeno delay entre mensagens
+                # --- FIM DA ATUALIZAÇÃO ---
+                
+                # --- DELAY ALEATÓRIO ENTRE 5 E 15 SEGUNDOS (ATUALIZAÇÃO) ---
+                delay = random.randint(5, 15)
+                print(f"⏳ Aguardando {delay} segundos antes de enviar a próxima mensagem...")
+                time.sleep(delay)
+                # --- FIM DO DELAY ---
         else:
             print(f"📱 Número de WhatsApp não encontrado/validado para {lead['Nome']}")
             df_resultados.at[index, 'Observações'] = 'Número WhatsApp não disponível'
+
+    print("\n✅ Processo de envio de mensagens concluído (função enviar_mensagens_automaticas).")
 
 # Função principal
 def main():

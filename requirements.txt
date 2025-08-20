@@ -1,6 +1,9 @@
 requests
 pandas
 openpyxl
-twilio
 python-dotenv
 phonenumbers
+streamlit
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
